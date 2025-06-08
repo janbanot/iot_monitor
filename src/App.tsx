@@ -1,25 +1,57 @@
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import ParameterCard from './components/ParameterCard';
-import { generateMockData, getStationInfo } from './utils/mockData';
+import { createThingSpeakService } from './services/thingspeak';
+import { mapThingSpeakToParameterData, mapChannelToStationInfo } from './utils/thingSpeakDataMapper';
 import { ParameterData, StationInfo } from './types';
 
 function App() {
   const [parameters, setParameters] = useState<ParameterData[]>([]);
-  const [stationInfo, setStationInfo] = useState<StationInfo>(getStationInfo());
+  const [stationInfo, setStationInfo] = useState<StationInfo>({
+    id: 'station-001',
+    name: 'Technolgie Internetu Rzeczy - IoT Station',
+    lastSync: new Date()
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const thingSpeakService = createThingSpeakService();
+
+  const fetchData = async () => {
+    try {
+      setError(null);
+      
+      // Fetch latest sensor data
+      const latestEntry = await thingSpeakService.getLatestEntry();
+      if (latestEntry) {
+        const mappedParameters = mapThingSpeakToParameterData(latestEntry);
+        setParameters(mappedParameters);
+      }
+
+      // Fetch channel info for station details
+      try {
+        const channelInfo = await thingSpeakService.getChannelInfo();
+        const mappedStationInfo = mapChannelToStationInfo(channelInfo, new Date());
+        setStationInfo(mappedStationInfo);
+      } catch (channelError) {
+        console.warn('Could not fetch channel info, using defaults');
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching ThingSpeak data:', err);
+      setError('Failed to fetch sensor data. Using offline mode.');
+      setStationInfo(prev => ({ ...prev, status: 'offline' }));
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     // Initial data load
-    setParameters(generateMockData());
+    fetchData();
 
-    // Simulate real-time updates every 30 seconds
-    const interval = setInterval(() => {
-      setParameters(generateMockData());
-      setStationInfo(prev => ({
-        ...prev,
-        lastSync: new Date()
-      }));
-    }, 30000);
+    // Real-time updates every 10 seconds (matching Arduino upload frequency)
+    const interval = setInterval(fetchData, 10000);
 
     return () => clearInterval(interval);
   }, []);
@@ -27,16 +59,41 @@ function App() {
   const criticalCount = parameters.filter(p => p.status === 'critical').length;
   const warningCount = parameters.filter(p => p.status === 'warning').length;
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+        <div className="text-center">
+          <div className="w-12 h-12 mx-auto mb-4 border-b-2 border-blue-600 rounded-full animate-spin"></div>
+          <p className="text-gray-600">Loading sensor data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header stationInfo={stationInfo} />
       
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="px-4 py-8 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        {/* Error Message */}
+        {error && (
+          <div className="mb-8">
+            <div className="p-4 border border-red-200 rounded-lg bg-red-50">
+              <div className="flex items-center">
+                <div className="w-5 h-5 mr-3 text-red-500">⚠️</div>
+                <div>
+                  <h3 className="font-medium text-red-800">Connection Error</h3>
+                  <p className="mt-1 text-sm text-red-700">{error}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Status Summary */}
         {(criticalCount > 0 || warningCount > 0) && (
           <div className="mb-8">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">System Status</h2>
+            <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">System Status</h2>
               <div className="flex flex-wrap gap-4">
                 {criticalCount > 0 && (
                   <div className="flex items-center space-x-2 text-red-600">
@@ -56,30 +113,12 @@ function App() {
         )}
 
         {/* Parameter Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
           {parameters.map((parameter) => (
             <ParameterCard key={parameter.id} parameter={parameter} />
           ))}
         </div>
 
-        {/* Additional Info */}
-        <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">System Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-            <div>
-              <span className="text-gray-500">Station ID:</span>
-              <span className="ml-2 font-medium text-gray-900">{stationInfo.id}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Total Parameters:</span>
-              <span className="ml-2 font-medium text-gray-900">{parameters.length}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Update Frequency:</span>
-              <span className="ml-2 font-medium text-gray-900">Every 30 seconds</span>
-            </div>
-          </div>
-        </div>
       </main>
     </div>
   );

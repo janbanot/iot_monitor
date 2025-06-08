@@ -30,18 +30,14 @@ const Header: React.FC<HeaderProps> = ({ stationInfo }) => {
   };
 
   return (
-    <div className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="bg-white border-b border-gray-200 shadow-sm">
+      <div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-2">
               <Activity className="w-8 h-8 text-blue-600" />
               <div>
                 <h1 className="text-xl font-semibold text-gray-900">{stationInfo.name}</h1>
-                <div className="flex items-center space-x-1 text-sm text-gray-500">
-                  <MapPin className="w-4 h-4" />
-                  <span>{stationInfo.location}</span>
-                </div>
               </div>
             </div>
           </div>

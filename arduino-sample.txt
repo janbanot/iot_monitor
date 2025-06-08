@@ -1,0 +1,336 @@
+#include <Arduino_MKRIoTCarrier.h>
+#include <SPI.h>
+#include <WiFiNINA.h>
+#include "ThingSpeak.h"
+
+const char* WIFI_NAME = "iPhone (Adrian)"; // WiFi SSID
+const char* WIFI_PASSWORD = "jakiehaslo?"; // WiFi Password
+const int CHANNEL_ID = 2983726; // ThingSpeak channel number
+const char* CHANNEL_API_KEY = "7LXAVLUC5BX3PAJP"; // ThingSpeak API key
+
+WiFiClient client;
+MKRIoTCarrier carrier;
+
+// WiFi connection status
+int wifiStatus = WL_IDLE_STATUS;
+
+// Progi ostrzegawcze - dostosowane do czujnika RGB
+const float TEMP_THRESHOLD = 25.0;      // °C - próg dla klimatyzacji
+const float HUM_THRESHOLD = 70.0;       // % - próg dla osuszania
+const float PRESSURE_THRESHOLD = 1000.0; // hPa - próg dla alertu pogodowego
+const float LIGHT_THRESHOLD = 100.0;    // RGB average - próg dla oświetlenia (0-255)
+
+// Kolory LED
+uint32_t red = carrier.leds.Color(255, 0, 0);      // Temperatura
+uint32_t blue = carrier.leds.Color(0, 0, 255);     // Wilgotność
+uint32_t yellow = carrier.leds.Color(255, 255, 0); // Ciśnienie
+uint32_t green = carrier.leds.Color(0, 255, 0);    // Światło
+uint32_t white = carrier.leds.Color(255, 255, 255); // Status OK
+uint32_t off = carrier.leds.Color(0, 0, 0);
+
+// Zmienne do przechowywania odczytów i alertów
+float temperature, humidity, pressure, light;
+bool tempAlert = false, humAlert = false, pressAlert = false, lightAlert = false;
+
+void setup() {
+  Serial.begin(9600);
+  
+  carrier.noCase();
+  carrier.begin();
+  
+  // Inicjalizacja wyświetlacza
+  carrier.display.fillScreen(ST77XX_BLACK);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setTextSize(2);
+  carrier.display.setCursor(30, 80);
+  carrier.display.println("Smart Home");
+  carrier.display.setCursor(30, 100);
+  carrier.display.println("Monitor");
+  
+  // Zgaszenie wszystkich LED na start
+  for(int i = 0; i < 5; i++) {
+    carrier.leds.setPixelColor(i, off);
+  }
+  carrier.leds.show();
+  
+  // Initialize WiFi connection
+  connectToWiFi();
+  
+  ThingSpeak.begin(client);
+  
+  // Wyświetlenie informacji o połączeniu
+  carrier.display.fillScreen(ST77XX_BLACK);
+  carrier.display.setTextSize(1);
+  carrier.display.setCursor(10, 10);
+  carrier.display.println("WiFi Connected!");
+  carrier.display.setCursor(10, 25);
+  carrier.display.println("Starting monitoring...");
+  
+  delay(2000);
+}
+
+void loop() {
+  // Check WiFi connection status and reconnect if needed
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi connection lost. Reconnecting...");
+    connectToWiFi();
+  }
+  
+  // Odczyt wszystkich czujników
+  readAllSensors();
+  
+  // Sprawdzenie progów i kontrola LED
+  checkThresholdsAndControlLEDs();
+  
+  // Aktualizacja wyświetlacza
+  updateDisplay();
+  
+  // Wysłanie danych do ThingSpeak
+  sendDataToThingSpeak();
+  
+  delay(15000); // ThingSpeak ma minimum 15 sekund między aktualizacjami
+}
+
+void readAllSensors() {
+  // Odczyt czujników z carrier
+  temperature = carrier.Env.readTemperature();
+  humidity = carrier.Env.readHumidity();
+  pressure = carrier.Pressure.readPressure();
+  
+  // Odczyt czujnika światła - używamy prawidłowej metody
+  if (carrier.Light.colorAvailable()) {
+    int r, g, b;
+    carrier.Light.readColor(r, g, b);
+    // Obliczamy jasność jako średnią RGB
+    light = (r + g + b) / 3.0;
+  } else {
+    light = 0; // Wartość domyślna gdy czujnik niedostępny
+  }
+  
+  // Debug w Serial Monitor
+  Serial.println("=== SENSOR READINGS ===");
+  Serial.println("Temperature: " + String(temperature, 1) + "°C");
+  Serial.println("Humidity: " + String(humidity, 1) + "%");
+  Serial.println("Pressure: " + String(pressure, 1) + " hPa");
+  Serial.println("Light (RGB avg): " + String(light, 1));
+}
+
+void checkThresholdsAndControlLEDs() {
+  // Reset alertów
+  tempAlert = humAlert = pressAlert = lightAlert = false;
+  
+  // Sprawdzenie temperatury - LED 0 (czerwona)
+  if(temperature > TEMP_THRESHOLD) {
+    tempAlert = true;
+    carrier.leds.setPixelColor(0, red);
+    Serial.println("🌡️ ALERT: Temperature too high (" + String(temperature, 1) + "°C) - cooling needed!");
+  } else {
+    carrier.leds.setPixelColor(0, off);
+  }
+  
+  // Sprawdzenie wilgotności - LED 1 (niebieska)
+  if(humidity > HUM_THRESHOLD) {
+    humAlert = true;
+    carrier.leds.setPixelColor(1, blue);
+    Serial.println("💧 ALERT: Humidity too high (" + String(humidity, 1) + "%) - dehumidifying needed!");
+  } else {
+    carrier.leds.setPixelColor(1, off);
+  }
+  
+  // Sprawdzenie ciśnienia - LED 2 (żółta)
+  if(pressure < PRESSURE_THRESHOLD) {
+    pressAlert = true;
+    carrier.leds.setPixelColor(2, yellow);
+    Serial.println("🌪️ ALERT: Low pressure (" + String(pressure, 1) + " hPa) - weather change incoming!");
+  } else {
+    carrier.leds.setPixelColor(2, off);
+  }
+  
+  // Sprawdzenie światła - LED 3 (zielona)
+  if(light < LIGHT_THRESHOLD) {
+    lightAlert = true;
+    carrier.leds.setPixelColor(3, green);
+    Serial.println("💡 ALERT: Low light (" + String(light, 1) + " RGB avg) - lighting needed!");
+  } else {
+    carrier.leds.setPixelColor(3, off);
+  }
+  
+  // LED statusu - LED 4 (biała) - miga gdy wszystko OK
+  if(!tempAlert && !humAlert && !pressAlert && !lightAlert) {
+    static bool statusBlink = false;
+    static unsigned long lastBlink = 0;
+    
+    if(millis() - lastBlink > 1000) { // Miga co sekundę
+      statusBlink = !statusBlink;
+      lastBlink = millis();
+    }
+    
+    carrier.leds.setPixelColor(4, statusBlink ? white : off);
+    Serial.println("✅ All systems normal");
+  } else {
+    carrier.leds.setPixelColor(4, off);
+    int alertCount = tempAlert + humAlert + pressAlert + lightAlert;
+    Serial.println("⚠️ Active alerts: " + String(alertCount));
+  }
+  
+  carrier.leds.show();
+}
+
+void updateDisplay() {
+  carrier.display.fillScreen(ST77XX_BLACK);
+  carrier.display.setTextSize(1);
+  
+  // Nagłówek
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.setCursor(15, 5);
+  carrier.display.println("SMART HOME MONITOR");
+  
+  // Linia oddzielająca
+  carrier.display.drawLine(5, 20, 235, 20, ST77XX_WHITE);
+  
+  // Temperatura z ikoną alertu
+  carrier.display.setCursor(10, 28);
+  carrier.display.setTextColor(tempAlert ? ST77XX_RED : ST77XX_WHITE);
+  carrier.display.print("Temp: " + String(temperature, 1) + "C");
+  if(tempAlert) {
+    carrier.display.print(" [COOL!]");
+  }
+  
+  // Wilgotność z ikoną alertu
+  carrier.display.setCursor(10, 43);
+  carrier.display.setTextColor(humAlert ? ST77XX_CYAN : ST77XX_WHITE);
+  carrier.display.print("Hum:  " + String(humidity, 1) + "%");
+  if(humAlert) {
+    carrier.display.print(" [DRY!]");
+  }
+  
+  // Ciśnienie z ikoną alertu
+  carrier.display.setCursor(10, 58);
+  carrier.display.setTextColor(pressAlert ? ST77XX_YELLOW : ST77XX_WHITE);
+  carrier.display.print("Press:" + String(pressure, 0) + "hPa");
+  if(pressAlert) {
+    carrier.display.print(" [STORM!]");
+  }
+  
+  // Światło z ikoną alertu
+  carrier.display.setCursor(10, 73);
+  carrier.display.setTextColor(lightAlert ? ST77XX_GREEN : ST77XX_WHITE);
+  carrier.display.print("Light:" + String(light, 0));
+  if(lightAlert) {
+    carrier.display.print(" [DARK!]");
+  }
+  
+  // Linia oddzielająca
+  carrier.display.drawLine(5, 88, 235, 88, ST77XX_WHITE);
+  
+  // Status alertów
+  carrier.display.setCursor(10, 95);
+  int alertCount = tempAlert + humAlert + pressAlert + lightAlert;
+  if(alertCount == 0) {
+    carrier.display.setTextColor(ST77XX_GREEN);
+    carrier.display.println("Status: ALL OK");
+  } else {
+    carrier.display.setTextColor(ST77XX_RED);
+    carrier.display.println("Alerts: " + String(alertCount) + " active");
+  }
+  
+  // Czas działania
+  carrier.display.setCursor(10, 108);
+  carrier.display.setTextColor(ST77XX_WHITE);
+  carrier.display.println("Uptime: " + String(millis()/1000) + "s");
+  
+  // Wskaźnik połączenia WiFi
+  carrier.display.setCursor(190, 108);
+  carrier.display.setTextColor(WiFi.status() == WL_CONNECTED ? ST77XX_GREEN : ST77XX_RED);
+  carrier.display.println("WiFi");
+}
+
+void sendDataToThingSpeak() {
+  Serial.println("📡 Sending data to ThingSpeak...");
+  
+  // Pola 1-4: Wartości z czujników
+  ThingSpeak.setField(1, temperature);
+  ThingSpeak.setField(2, humidity);
+  ThingSpeak.setField(3, pressure);
+  ThingSpeak.setField(4, light);
+  
+  // Pola 5-8: Statusy alertów (1 = alert aktywny, 0 = OK)
+  ThingSpeak.setField(5, tempAlert ? 1 : 0);
+  ThingSpeak.setField(6, humAlert ? 1 : 0);
+  ThingSpeak.setField(7, pressAlert ? 1 : 0);
+  ThingSpeak.setField(8, lightAlert ? 1 : 0);
+  
+  int response = ThingSpeak.writeFields(CHANNEL_ID, CHANNEL_API_KEY);
+  
+  if (response == 200) {
+    Serial.println("✅ Data sent to ThingSpeak successfully");
+  } else {
+    Serial.println("❌ Error sending data to ThingSpeak. HTTP code: " + String(response));
+  }
+  
+  Serial.println("📊 Data summary:");
+  Serial.println("   T:" + String(temperature, 1) + "°C H:" + String(humidity, 1) + "% P:" + String(pressure, 0) + "hPa L:" + String(light, 0));
+  Serial.println("   Alerts - T:" + String(tempAlert) + " H:" + String(humAlert) + " P:" + String(pressAlert) + " L:" + String(lightAlert));
+  Serial.println("=====================================");
+}
+
+void connectToWiFi() {
+  // Check for the WiFi module
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("Communication with WiFi module failed!");
+    
+    // Wyświetlenie błędu na OLED
+    carrier.display.fillScreen(ST77XX_BLACK);
+    carrier.display.setTextColor(ST77XX_RED);
+    carrier.display.setCursor(10, 50);
+    carrier.display.println("WiFi module ERROR!");
+    
+    while (true); // Don't continue
+  }
+
+  // Check firmware version
+  String fv = WiFi.firmwareVersion();
+  if (fv < WIFI_FIRMWARE_LATEST_VERSION) {
+    Serial.println("Please upgrade the firmware");
+  }
+
+  // Attempt to connect to WiFi network
+  while (wifiStatus != WL_CONNECTED) {
+    Serial.print("Attempting to connect to SSID: ");
+    Serial.println(WIFI_NAME);
+    
+    // Wyświetlenie statusu łączenia na OLED
+    carrier.display.fillScreen(ST77XX_BLACK);
+    carrier.display.setTextColor(ST77XX_YELLOW);
+    carrier.display.setCursor(10, 40);
+    carrier.display.println("Connecting to WiFi...");
+    carrier.display.setCursor(10, 60);
+    carrier.display.println(WIFI_NAME);
+    
+    // Connect to WPA/WPA2 network
+    wifiStatus = WiFi.begin(WIFI_NAME, WIFI_PASSWORD);
+    
+    // Wait 10 seconds for connection
+    delay(10000);
+  }
+  
+  Serial.println("Connected to WiFi!");
+  printWiFiStatus();
+}
+
+void printWiFiStatus() {
+  // Print the SSID of the network you're attached to
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // Print your board's IP address
+  IPAddress ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // Print the received signal strength
+  long rssi = WiFi.RSSI();
+  Serial.print("Signal strength (RSSI): ");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+}

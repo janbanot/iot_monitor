@@ -101,12 +101,6 @@ const ParameterCard: React.FC<ParameterCardProps> = ({ parameter }) => {
             {parameter.status}
           </span>
         </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Last Updated:</span>
-          <span className="text-gray-700">
-            {parameter.lastUpdated.toLocaleTimeString()}
-          </span>
-        </div>
       </div>
     </div>
   );
