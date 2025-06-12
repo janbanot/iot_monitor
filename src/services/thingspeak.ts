@@ -28,7 +28,7 @@ interface ThingSpeakResponse {
 }
 
 export class ThingSpeakService {
-  private readonly baseUrl = 'https://api.thingspeak.com';
+  private readonly baseUrl = "https://api.thingspeak.com";
   private readonly channelId: string;
   private readonly readApiKey?: string;
 
@@ -37,85 +37,90 @@ export class ThingSpeakService {
     this.readApiKey = readApiKey;
   }
 
-  private buildUrl(endpoint: string, params: Record<string, string> = {}): string {
+  private buildUrl(
+    endpoint: string,
+    params: Record<string, string> = {},
+  ): string {
     const url = new URL(`${this.baseUrl}${endpoint}`);
-    
+
     if (this.readApiKey) {
       params.api_key = this.readApiKey;
     }
-    
+
     Object.entries(params).forEach(([key, value]) => {
       url.searchParams.append(key, value);
     });
-    
+
     return url.toString();
   }
 
   async getChannelInfo(): Promise<ThingSpeakChannel> {
     const url = this.buildUrl(`/channels/${this.channelId}.json`);
-    
+
     try {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch channel info: ${response.status}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching ThingSpeak channel info:', error);
+      console.error("Error fetching ThingSpeak channel info:", error);
       throw error;
     }
   }
 
   async getLatestEntry(): Promise<ThingSpeakEntry | null> {
     const url = this.buildUrl(`/channels/${this.channelId}/feeds/last.json`);
-    
+
     try {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch latest entry: ${response.status}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching latest ThingSpeak entry:', error);
+      console.error("Error fetching latest ThingSpeak entry:", error);
       throw error;
     }
   }
 
-  async getEntries(options: {
-    results?: number;
-    start?: string;
-    end?: string;
-  } = {}): Promise<ThingSpeakResponse> {
+  async getEntries(
+    options: {
+      results?: number;
+      start?: string;
+      end?: string;
+    } = {},
+  ): Promise<ThingSpeakResponse> {
     const params: Record<string, string> = {};
-    
+
     if (options.results) params.results = options.results.toString();
     if (options.start) params.start = options.start;
     if (options.end) params.end = options.end;
-    
+
     const url = this.buildUrl(`/channels/${this.channelId}/feeds.json`, params);
-    
+
     try {
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error(`Failed to fetch entries: ${response.status}`);
       }
-      
+
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('Error fetching ThingSpeak entries:', error);
+      console.error("Error fetching ThingSpeak entries:", error);
       throw error;
     }
   }
 }
 
 export const createThingSpeakService = (): ThingSpeakService => {
-  const channelId = '2983726';
-  const readApiKey = '7LXAVLUC5BX3PAJP';
-  
+  const channelId = "2983726";
+  const readApiKey = "7LXAVLUC5BX3PAJP";
+
   return new ThingSpeakService(channelId, readApiKey);
 };

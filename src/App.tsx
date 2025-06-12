@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import ParameterCard from './components/ParameterCard';
-import { createThingSpeakService } from './services/thingspeak';
-import { mapThingSpeakToParameterData, mapChannelToStationInfo } from './utils/thingSpeakDataMapper';
-import { ParameterData, StationInfo } from './types';
+import React, { useState, useEffect } from "react";
+import Header from "./components/Header";
+import ParameterCard from "./components/ParameterCard";
+import { createThingSpeakService } from "./services/thingspeak";
+import {
+  mapThingSpeakToParameterData,
+  mapChannelToStationInfo,
+} from "./utils/thingSpeakDataMapper";
+import { ParameterData, StationInfo } from "./types";
 
 function App() {
   const [parameters, setParameters] = useState<ParameterData[]>([]);
   const [stationInfo, setStationInfo] = useState<StationInfo>({
-    id: 'station-001',
-    name: 'Technolgie Internetu Rzeczy - IoT Station',
-    lastSync: new Date()
+    id: "station-001",
+    name: "Technolgie Internetu Rzeczy - IoT Station",
+    lastSync: new Date(),
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +23,7 @@ function App() {
   const fetchData = async () => {
     try {
       setError(null);
-      
+
       // Fetch latest sensor data
       const latestEntry = await thingSpeakService.getLatestEntry();
       if (latestEntry) {
@@ -31,17 +34,20 @@ function App() {
       // Fetch channel info for station details
       try {
         const channelInfo = await thingSpeakService.getChannelInfo();
-        const mappedStationInfo = mapChannelToStationInfo(channelInfo, new Date());
+        const mappedStationInfo = mapChannelToStationInfo(
+          channelInfo,
+          new Date(),
+        );
         setStationInfo(mappedStationInfo);
       } catch (channelError) {
-        console.warn('Could not fetch channel info, using defaults');
+        console.warn("Could not fetch channel info, using defaults");
       }
 
       setLoading(false);
     } catch (err) {
-      console.error('Error fetching ThingSpeak data:', err);
-      setError('Failed to fetch sensor data. Using offline mode.');
-      setStationInfo(prev => ({ ...prev, status: 'offline' }));
+      console.error("Error fetching ThingSpeak data:", err);
+      setError("Failed to fetch sensor data. Using offline mode.");
+      setStationInfo((prev) => ({ ...prev, status: "offline" }));
       setLoading(false);
     }
   };
@@ -56,8 +62,10 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const criticalCount = parameters.filter(p => p.status === 'critical').length;
-  const warningCount = parameters.filter(p => p.status === 'warning').length;
+  const criticalCount = parameters.filter(
+    (p) => p.status === "critical",
+  ).length;
+  const warningCount = parameters.filter((p) => p.status === "warning").length;
 
   if (loading) {
     return (
@@ -73,7 +81,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Header stationInfo={stationInfo} />
-      
+
       <main className="px-4 py-8 mx-auto max-w-7xl sm:px-6 lg:px-8">
         {/* Error Message */}
         {error && (
@@ -93,18 +101,25 @@ function App() {
         {(criticalCount > 0 || warningCount > 0) && (
           <div className="mb-8">
             <div className="p-4 bg-white border border-gray-200 rounded-lg shadow-sm">
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">System Status</h2>
+              <h2 className="mb-3 text-lg font-semibold text-gray-900">
+                System Status
+              </h2>
               <div className="flex flex-wrap gap-4">
                 {criticalCount > 0 && (
                   <div className="flex items-center space-x-2 text-red-600">
                     <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                    <span className="font-medium">{criticalCount} Critical Alert{criticalCount > 1 ? 's' : ''}</span>
+                    <span className="font-medium">
+                      {criticalCount} Critical Alert
+                      {criticalCount > 1 ? "s" : ""}
+                    </span>
                   </div>
                 )}
                 {warningCount > 0 && (
                   <div className="flex items-center space-x-2 text-yellow-600">
                     <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                    <span className="font-medium">{warningCount} Warning{warningCount > 1 ? 's' : ''}</span>
+                    <span className="font-medium">
+                      {warningCount} Warning{warningCount > 1 ? "s" : ""}
+                    </span>
                   </div>
                 )}
               </div>
@@ -118,7 +133,6 @@ function App() {
             <ParameterCard key={parameter.id} parameter={parameter} />
           ))}
         </div>
-
       </main>
     </div>
   );
