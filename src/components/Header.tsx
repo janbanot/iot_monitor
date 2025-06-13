@@ -1,5 +1,5 @@
 import React from "react";
-import { Activity, MapPin, Wifi, WifiOff, Wrench } from "lucide-react";
+import { Activity, Wifi, WifiOff, Wrench } from "lucide-react";
 import { StationInfo } from "../types";
 
 interface HeaderProps {
@@ -29,6 +29,18 @@ const Header: React.FC<HeaderProps> = ({ stationInfo }) => {
     }
   };
 
+  // Format the last sync date to "YYYY-MM-DD, HH:mm:ss" (24h format)
+  const formatDate = (date: Date) => {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(date.getDate()).padStart(2, "0")}, ${String(
+      date.getHours()
+    ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(
+      date.getSeconds()
+    ).padStart(2, "0")}`;
+  };
+
   return (
     <div className="bg-white border-b border-gray-200 shadow-sm">
       <div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
@@ -46,7 +58,8 @@ const Header: React.FC<HeaderProps> = ({ stationInfo }) => {
 
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-500">
-              Last sync: {stationInfo.lastSync.toLocaleTimeString()}
+              Last sync:{" "}
+              {formatDate(new Date(stationInfo.lastSync)).toLocaleString()}
             </div>
             <div
               className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor()}`}

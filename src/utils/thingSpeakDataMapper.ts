@@ -41,9 +41,13 @@ export const mapThingSpeakToParameterData = (
       unit: "°C",
       icon: "Thermometer",
       status: tempAlert
-        ? "critical"
-        : temperature > 23 || temperature < 20
-          ? "warning"
+        ? temperature < 15 || temperature > 30
+          ? "critical"
+          : "warning"
+        : temperature < 18 || temperature > 25
+          ? temperature < 15 || temperature > 30
+            ? "critical"
+            : "warning"
           : "normal",
       lastUpdated,
       ranges: {
@@ -58,12 +62,14 @@ export const mapThingSpeakToParameterData = (
       unit: "%",
       icon: "Droplets",
       status: humAlert
-        ? "critical"
-        : humidity < 10 || humidity > 80
+        ? humidity < 10 || humidity > 80
           ? "critical"
-          : humidity < 30 || humidity > 50
-            ? "warning"
-            : "normal",
+          : "warning"
+        : humidity < 30 || humidity > 50
+          ? humidity < 10 || humidity > 80
+            ? "critical"
+            : "warning"
+          : "normal",
       lastUpdated,
       ranges: {
         normal: { min: 30, max: 50 },
@@ -77,16 +83,18 @@ export const mapThingSpeakToParameterData = (
       unit: "hPa",
       icon: "Gauge",
       status: pressAlert
-        ? "critical"
-        : pressure < 950 || pressure > 1050
-          ? "critical"
-          : pressure < 990 || pressure > 1030
-            ? "warning"
+        ? pressure >= 980 && pressure <= 989
+          ? "warning"
+          : "critical"
+        : pressure >= 980 && pressure <= 989
+          ? "warning"
+          : pressure < 950 || pressure > 1050
+            ? "critical"
             : "normal",
       lastUpdated,
       ranges: {
-        normal: { min: 990, max: 1030 },
-        warning: { min: 950, max: 1050 },
+        normal: { min: 990, max: 1020 },
+        warning: { min: 980, max: 989 },
       },
     },
     {
@@ -96,11 +104,13 @@ export const mapThingSpeakToParameterData = (
       unit: "lumen",
       icon: "Sun",
       status: lightAlert
-        ? "critical"
-        : light === 0 || light > 200
+        ? light === 0 || light > 200
           ? "critical"
-          : light > 0 && light < 100
-            ? "warning"
+          : "warning"
+        : light > 0 && light < 100
+          ? "warning"
+          : light === 0 || light > 200
+            ? "critical"
             : "normal",
       lastUpdated,
       ranges: {
